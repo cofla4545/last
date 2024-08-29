@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>파일 선택</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css"
+          crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700,900" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            color: #3a3f52;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: #ffffff;
+            font-size: 24px;
+        }
+
+        .container {
+            width: 90%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 40px;
+            font-weight: 700;
+        }
+
+        button {
+            font-size: 20px;
+            color: #3a3f52;
+            background-color: #6fec02;
+            padding: 15px 20px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            border: none;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 300px;
+            font-weight: 400;
+            letter-spacing: .1em;
+        }
+
+        #backButton {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: #3a3f52;
+            padding: 10px;
+            width: 70px;
+        }
+
+        #convertButton {
+            display: block;
+            margin: 20px auto 0 auto;
+        }
+
+        #progressContainer {
+            display: none;
+            width: 100%;
+            max-width: 300px;
+            height: 20px;
+            background-color: #f3f3f3;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px auto 0 auto;
+            text-align: center;
+        }
+
+        #progressBar {
+            width: 0;
+            height: 100%;
+            background-color: #6fec02;
+            transition: width 0.5s ease;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: #6c757d;
+            font-size: 18px;
+            font-weight: 300;
+        }
+    </style>
+</head>
+<body>
+<button id="backButton" onclick="window.location.href = '/'">&#60;</button>
+<div class="container">
+    <h1>파일 선택하기</h1>
+    <button id="galleryButton" onclick="document.getElementById('fileInput').click()">Gallery</button>
+    <input type="file" id="fileInput" style="display:none;">
+    <div id="preview"></div>
+    <button id="convertButton" style="display:none;" onclick="convertFile()">Convert</button>
+
+    <!-- 상태바 추가 (동영상 처리 시) -->
+    <div id="progressContainer">
+        <div id="progressBar"></div>
+    </div>
+</div>
+<form id="uploadForm" action="/convert_image" method="post" enctype="multipart/form-data" style="display:none;">
+    <input type="file" name="image" id="hiddenFileInput">
+</form>
+<form id="uploadVideoForm" action="/convert_video" method="post" enctype="multipart/form-data" style="display:none;">
+    <input type="file" name="video" id="hiddenVideoInput">
+</form>
+<script>
+    document.getElementById('fileInput').addEventListener('change', function (e) {
+        var preview = document.getElementById('preview');
+        var convertButton = document.getElementById('convertButton');
+        var galleryButton = document.getElementById('galleryButton');
+        preview.innerHTML = ''; // 미리보기 초기화
+        if (e.target.files.length === 1) { // 한 개의 파일만 허용
+            var file = e.target.files[0];
+            var element;
+            if (file.type.startsWith('image/')) {
+                element = document.createElement('img');
+                element.src = URL.createObjectURL(file);
+                element.style.maxWidth = '200px';
+                element.style.maxHeight = '200px';
+                element.onload = function () {
+                    URL.revokeObjectURL(this.src); // 메모리 해제
+                }
+                var hiddenFileInput = document.getElementById('hiddenFileInput');
+                hiddenFileInput.files = e.target.files;
+            } else if (file.type.startsWith('video/')) {
+                element = document.createElement('video');
+                element.src = URL.createObjectURL(file);
+                element.style.maxWidth = '200px';
+                element.style.maxHeight = '200px';
+                element.controls = true;
+                element.onload = function () {
+                    URL.revokeObjectURL(this.src); // 메모리 해제
+                }
+                var hiddenFileInput = document.getElementById('hiddenVideoInput');
+                hiddenFileInput.files = e.target.files;
+            } else {
+                alert('이미지 또는 동영상 파일만 선택할 수 있습니다.');
+                e.target.value = ''; // 파일 입력 재설정
+                return;
+            }
+            preview.appendChild(element);
+            convertButton.style.display = 'block'; // 변환 버튼 표시
+            galleryButton.textContent = 'Reselect'; // 버튼 글씨 변경
+        } else {
+            alert('한 개의 파일만 선택할 수 있습니다.');
+            e.target.value = ''; // 파일 입력 재설정
+        }
+    });
+
+    function convertFile() {
+        var imageInput = document.getElementById('hiddenFileInput');
+        var videoInput = document.getElementById('hiddenVideoInput');
+        if (imageInput.files.length === 1) {
+            document.getElementById('uploadForm').submit();
+        } else if (videoInput.files.length === 1) {
+            var formData = new FormData();
+            formData.append('video', videoInput.files[0]);
+
+            fetch('/convert_video', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+                .then(data => {
+                    if (data.message === 'Video processing started') {
+                        startProgressBar();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error starting video processing:', error);
+                    alert('Error starting video processing. Please try again.');
+                });
+        }
+    }
+
+    function startProgressBar() {
+        var progressBar = document.getElementById('progressBar');
+        var progressContainer = document.getElementById('progressContainer');
+        progressContainer.style.display = 'block';  // 상태바 보이기
+
+        const socket = io();
+
+        socket.on('progress', function (data) {
+            console.log('Progress:', data.progress);
+            progressBar.style.width = `${data.progress}%`;
+        });
+
+        socket.on('complete', function () {
+            window.location.href = '/gallery_convert'; // 최신 변환된 파일로 이동
+        });
+    }
+</script>
+<footer>We are P.P</footer>
+</body>
+</html>

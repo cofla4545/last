@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera App</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700,900" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+            color: #3a3f52;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 90%;
+            text-align: center;
+        }
+
+        #camera, #photoPreview, #videoPlayback {
+            width: 100%;
+            max-width: 450px;
+            height: auto;
+        }
+
+        button {
+            font-size: 20px; /* 글씨 크기를 20px로 조정 */
+            color: #3a3f52;
+            background-color: #6fec02;
+            padding: 20px 30px;
+            margin: 10px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 400;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button img {
+            margin-right: 10px;
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hide {
+            display: none;
+        }
+
+        video, img {
+            cursor: pointer;
+        }
+
+        #backButton {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: #3a3f52;
+            padding: 10px;
+            width: 70px;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: #6c757d;
+            font-size: 18px;
+            font-weight: 300;
+        }
+
+        #progressContainer {
+            display: none;
+            width: 100%;
+            max-width: 300px; /* 크기를 조정 */
+            height: 20px; /* 크기를 조정 */
+            background-color: #f3f3f3;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 20px;
+            border: 1px solid #ddd; /* 테두리 추가 */
+        }
+
+        #progressBar {
+            width: 0;
+            height: 100%;
+            background-color: #6fec02; /* 상태바 색상 조정 */
+            transition: width 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+<!-- Back 버튼 -->
+<button id="backButton" onclick="window.location.href = '/'">&#60;</button>
+<div class="container">
+    <video id="camera" autoplay muted class="hide"></video>
+    <video id="videoPlayback" class="hide" controls></video>
+    <img id="photoPreview" class="hide"/>
+    <div class="button-container">
+        <button id="recordButton" class="hide"><img
+                src="https://img.icons8.com/material-outlined/24/000000/video-call.png"/> Record Video
+        </button>
+        <button id="photoButton" class="hide"><img src="https://img.icons8.com/material-outlined/24/000000/camera.png"/>
+            Take Photo
+        </button>
+        <button id="retakeButton" class="hide">Retake</button>
+        <button id="convertButton" class="hide">Convert</button>
+    </div>
+    <div id="progressContainer">
+        <div id="progressBar"></div>
+    </div>
+</div>
+<script>
+    const camera = document.getElementById('camera');
+    const videoPlayback = document.getElementById('videoPlayback');
+    const photoPreview = document.getElementById('photoPreview');
+    const recordButton = document.getElementById('recordButton');
+    const photoButton = document.getElementById('photoButton');
+    const retakeButton = document.getElementById('retakeButton');
+    const convertButton = document.getElementById('convertButton');
+    const progressFill = document.getElementById('progressFill');
+    const progressContainer = document.getElementById('progressContainer');
+    let stream = null;
+    let recorder = null;
+    let isRecording = false;
+    let recordedChunks = [];
+
+    function startCamera() {
+        navigator.mediaDevices.getUserMedia({video: true, audio: true})
+            .then(function (s) {
+                stream = s;
+                camera.srcObject = stream;
+                camera.classList.remove('hide');
+                recordButton.classList.remove('hide');
+                photoButton.classList.remove('hide');
+            }).catch(function (err) {
+            console.error(err);
+        });
+    }
+
+    startCamera();
+
+    recordButton.onclick = function () {
+        if (!isRecording) {
+            startRecording();
+            photoButton.classList.add('hide');
+        } else {
+            stopRecording();
+        }
+    };
+
+    photoButton.onclick = function () {
+        takePhoto();
+        recordButton.classList.add('hide');
+    };
+
+    function startRecording() {
+        recordedChunks = [];
+        recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (e) => recordedChunks.push(e.data);
+        recorder.onstop = () => {
+            const blob = new Blob(recordedChunks, {type: 'video/webm'});
+            const url = URL.createObjectURL(blob);
+            videoPlayback.src = url;
+            videoPlayback.classList.remove('hide');
+            camera.classList.add('hide');
+            photoPreview.classList.add('hide');
+            retakeButton.classList.remove('hide');
+            convertButton.classList.remove('hide');
+            recordButton.classList.add('hide');
+
+            // Store video data in localStorage
+            const reader = new FileReader();
+            reader.onloadend = function () {
+                localStorage.setItem('capturedMedia', reader.result);
+                localStorage.setItem('mediaType', 'video');
+            }
+            reader.readAsDataURL(blob);
+        };
+        recorder.start();
+        recordButton.innerHTML = '<img src="https://img.icons8.com/material-rounded/24/000000/stop.png"/> Stop';
+        isRecording = true;
+    }
+
+    function stopRecording() {
+        recorder.stop();
+        recordButton.innerHTML = '<img src="https://img.icons8.com/material-outlined/24/000000/video-call.png"/> Record Video';
+        isRecording = false;
+    }
+
+    function takePhoto() {
+        const canvas = document.createElement('canvas');
+        canvas.width = camera.videoWidth;
+        canvas.height = camera.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(camera, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        photoPreview.src = dataUrl;
+        photoPreview.classList.remove('hide');
+        camera.classList.add('hide');
+        videoPlayback.classList.add('hide');
+        retakeButton.classList.remove('hide');
+        convertButton.classList.remove('hide');
+        photoButton.classList.add('hide');
+
+        // Store photo data in localStorage
+        localStorage.setItem('capturedMedia', dataUrl);
+        localStorage.setItem('mediaType', 'photo');
+    }
+
+    retakeButton.onclick = function () {
+        camera.classList.remove('hide');
+        videoPlayback.classList.add('hide');
+        photoPreview.classList.add('hide');
+        retakeButton.classList.add('hide');
+        convertButton.classList.add('hide');
+        recordButton.classList.remove('hide');
+        photoButton.classList.remove('hide');
+        startCamera();
+    };
+
+    convertButton.onclick = function () {
+        const mediaType = localStorage.getItem('mediaType');
+        const dataUrl = localStorage.getItem('capturedMedia');
+        const blob = dataURLToBlob(dataUrl);
+        const formData = new FormData();
+
+        if (mediaType === 'photo') {
+            formData.append('image', blob, 'camera_image.png');
+            fetch('/camera_image_convert', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Network response was not ok.');
+            }).then(data => {
+                window.location.href = data.redirect_url; // Redirect to the appropriate URL
+            }).catch(error => {
+                console.error('There was a problem with your fetch operation:', error);
+            });
+        } else {
+            progressContainer.style.display = 'block'; // 상태바 보이기
+
+            formData.append('video', blob, 'camera_video.webm');
+            fetch('/camera_video_convert', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Network response was not ok.');
+            }).then(data => {
+                // Start the progress bar
+                startProgressBar(data.redirect_url);
+            }).catch(error => {
+                console.error('There was a problem with your fetch operation:', error);
+            });
+        }
+    };
+
+    function startProgressBar(redirectUrl) {
+        const progressBar = document.getElementById('progressBar');
+        const progressContainer = document.getElementById('progressContainer');
+
+        progressContainer.style.display = 'block';  // 상태바 보이기
+
+        const socket = io();
+
+        socket.on('progress', function (data) {
+            console.log('Progress:', data.progress);  // 로그 추가
+            progressBar.style.width = `${data.progress}%`;
+            // 퍼센트를 표시하는 텍스트를 제거
+        });
+
+        socket.on('complete', function () {
+            window.location.href = redirectUrl;
+        });
+    }
+
+
+    function dataURLToBlob(dataURL) {
+        const parts = dataURL.split(';base64,');
+        const byteString = atob(parts[1]);
+        const mimeString = parts[0].split(':')[1];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+        return new Blob([ab], {type: mimeString});
+    }
+
+    window.onload = startCamera;
+</script>
+<footer>We are P.P</footer>
+</body>
+</html>
